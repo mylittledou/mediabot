@@ -31,4 +31,4 @@ def check_config():
 
 # 代理设置 (国内访问 Telegram 需要)
 # 格式例如: http://192.168.1.x:7890 或 socks5://192.168.1.x:7890
-TG_PROXY = os.getenv("TG_PROXY")
+TG_PROXY = os.getenv("TG_PROXY", "").strip() or None
