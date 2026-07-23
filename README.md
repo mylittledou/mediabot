@@ -25,6 +25,7 @@ GitHub Actions 会自动将镜像打包并推送到 GitHub Container Registry (g
 | :--- | :--- | :--- |
 | `TG_BOT_TOKEN` | 机器人的 Token (必须) | `123456789:ABCdefGHIjklmNOPQ...` |
 | `TG_ALLOWED_USERS` | 允许使用机器人的 User ID (推荐配置，防滥用) | `12345678` (多个用逗号分隔) |
+| `TG_PROXY` | **(国内用户必填)** 访问 Telegram 的代理地址 | `http://192.168.1.X:7890` 或 `socks5://192.168.1.X:7890` |
 | `MEDIADO_URL` | 核心主程序的访问地址。如果是同一台 NAS，直接填 NAS 的内网 IP 和主程序的端口。 | `http://192.168.1.100:5000` |
 | `MEDIADO_USERNAME`| 主程序网页登录的账号 | `admin` |
 | `MEDIADO_PASSWORD`| 主程序网页登录的密码 | `password` |

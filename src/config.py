@@ -28,3 +28,7 @@ def check_config():
         raise ValueError("请设置 TG_BOT_TOKEN 环境变量")
     if not TG_ALLOWED_USERS:
         print("警告: TG_ALLOWED_USERS 未设置或为空，任何用户都可以使用此机器人！建议设置您的 User ID。")
+
+# 代理设置 (国内访问 Telegram 需要)
+# 格式例如: http://192.168.1.x:7890 或 socks5://192.168.1.x:7890
+TG_PROXY = os.getenv("TG_PROXY")

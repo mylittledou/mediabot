@@ -1,13 +1,19 @@
 import telebot
+from telebot import apihelper
 import logging
 import time
 import re
-from config import TG_BOT_TOKEN, TG_ALLOWED_USERS, check_config
+from config import TG_BOT_TOKEN, TG_ALLOWED_USERS, TG_PROXY, check_config
 from api_client import api
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# 配置代理 (如果环境变量提供了代理)
+if TG_PROXY:
+    logger.info(f"使用代理服务器: {TG_PROXY}")
+    apihelper.proxy = {'https': TG_PROXY, 'http': TG_PROXY}
 
 # 检查配置
 try:
