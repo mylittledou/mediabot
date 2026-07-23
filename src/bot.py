@@ -12,17 +12,19 @@ logger = logging.getLogger(__name__)
 
 # 配置代理 (如果环境变量提供了代理)
 if TG_PROXY:
-    logger.info(f"使用代理服务器: {TG_PROXY} (已通过环境变量全局注入)")
-    
-    # 诊断：启动前进行网络连通性自检
+    logger.info(f"使用代理服务器: {repr(TG_PROXY)} (已通过环境变量全局注入)")
+
+def check_network():
+    if not TG_PROXY:
+        return
     logger.info("进行网络连通性自检...")
     try:
         import requests
         res = requests.get('https://api.telegram.org', timeout=5)
         logger.info(f"自检成功: API 返回状态码 {res.status_code}")
+        return True
     except Exception as e:
         logger.error(f"自检失败，底层 requests 无法连接 Telegram: {e}")
-        # 测试纯 Socket 连通性
         try:
             import socket
             from urllib.parse import urlparse
@@ -32,7 +34,8 @@ if TG_PROXY:
             s.close()
             logger.info("原生 Socket 连接代理机成功！这说明是 requests 库或者 telebot 的代理配置问题。")
         except Exception as sock_e:
-            logger.error(f"原生 Socket 连接代理机也失败了: {sock_e}。这说明容器本身没有任何通往代理的路由！")
+            logger.error(f"原生 Socket 连接代理机也失败了: {sock_e}。容器此时可能还没有通往代理的路由。")
+        return False
 
 # 检查配置
 try:
@@ -89,7 +92,6 @@ def check_status(message):
     active_count = 0
     
     for task in tasks:
-        # 只显示非 completed 的任务或者近期任务。为了防止消息过长，可以限制数量或过滤
         if task['status'] == 'completed':
             continue
             
@@ -99,7 +101,6 @@ def check_status(message):
         progress = task.get('progress', 0)
         speed = task.get('speed', 0)
         
-        # 状态表情
         emoji = "⏳"
         if status == "downloading": emoji = "⬇️"
         elif status == "paused": emoji = "⏸️"
@@ -114,7 +115,6 @@ def check_status(message):
     if active_count == 0:
         status_text = "目前所有任务均已完成，没有正在进行中的下载。"
         
-    # Telegram 消息长度限制处理 (最大 4096 字符)
     if len(status_text) > 4000:
         status_text = status_text[:4000] + "\n...(内容过长截断)"
         
@@ -126,7 +126,6 @@ def check_status(message):
 def handle_text(message):
     text = message.text.strip()
     
-    # 简单的 URL 提取（支持带文件名的格式: URL 文件名）
     parts = re.split(r'\s+', text, 1)
     url = parts[0]
     filename = parts[1] if len(parts) > 1 else None
@@ -148,11 +147,20 @@ def handle_text(message):
                               parse_mode='Markdown')
 
 if __name__ == '__main__':
-    logger.info("Bot 正在启动...")
-    # 无限循环防止因为网络断开而退出
+    logger.info("Bot 进程启动...")
+    # 强制进行一次初始网络检查
+    check_network()
+    
     while True:
         try:
+            logger.info("开始连接 Telegram 服务器 (bot.polling)...")
             bot.polling(none_stop=True, interval=1, timeout=20)
         except Exception as e:
             logger.error(f"Bot 运行出错: {e}")
+            logger.info("准备在 5 秒后重试...")
             time.sleep(5)
+            # 每次重试前都检查一下网络，看是否恢复
+            check_network()
+            # 强制重建 requests Session，防止旧连接池缓存了错误的路由/DNS状态
+            import requests
+            apihelper.session = requests.Session()
