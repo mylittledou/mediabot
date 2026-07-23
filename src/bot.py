@@ -13,8 +13,26 @@ logger = logging.getLogger(__name__)
 # 配置代理 (如果环境变量提供了代理)
 if TG_PROXY:
     logger.info(f"使用代理服务器: {TG_PROXY} (已通过环境变量全局注入)")
-    # 注意: 不要在这里设置 apihelper.proxy，否则会覆盖 requests 的全局环境变量逻辑
-    # apihelper.proxy = {'https': TG_PROXY, 'http': TG_PROXY}
+    
+    # 诊断：启动前进行网络连通性自检
+    logger.info("进行网络连通性自检...")
+    try:
+        import requests
+        res = requests.get('https://api.telegram.org', timeout=5)
+        logger.info(f"自检成功: API 返回状态码 {res.status_code}")
+    except Exception as e:
+        logger.error(f"自检失败，底层 requests 无法连接 Telegram: {e}")
+        # 测试纯 Socket 连通性
+        try:
+            import socket
+            from urllib.parse import urlparse
+            parsed = urlparse(TG_PROXY)
+            logger.info(f"尝试原生 Socket 连接到代理机 {parsed.hostname}:{parsed.port}...")
+            s = socket.create_connection((parsed.hostname, parsed.port), timeout=3)
+            s.close()
+            logger.info("原生 Socket 连接代理机成功！这说明是 requests 库或者 telebot 的代理配置问题。")
+        except Exception as sock_e:
+            logger.error(f"原生 Socket 连接代理机也失败了: {sock_e}。这说明容器本身没有任何通往代理的路由！")
 
 # 检查配置
 try:
