@@ -13,12 +13,12 @@
 
 ### 2. 部署步骤 (使用镜像)
 
-如果你已经配置了 GitHub Actions 自动构建 Docker 镜像并推送到了 Docker Hub (例如 `yourusername/mediabot:latest`)：
+GitHub Actions 会自动将镜像打包并推送到 GitHub Container Registry (ghcr.io)。
 
 1. 打开 QNAP 的 **Container Station** -> **创建 (Create)**。
 2. 搜索并拉取你的镜像，或者直接点击右上角的 **创建应用程序 (Create Application)**（如果不想写 yml，选择普通容器创建）。
 3. **名称 (Name)**: `media-bot`
-4. **镜像 (Image)**: 填写你的镜像名 (如 `yourusername/mediabot:latest`)。
+4. **镜像 (Image)**: 填写 `ghcr.io/mylittledou/mediabot:main`。
 5. **高级设置 (Advanced Settings)** -> **环境 (Environment)**，添加以下环境变量：
 
 | 变量名 | 说明 | 示例值 |
@@ -40,7 +40,4 @@
 ## 开发者：GitHub Actions 自动构建
 本项目包含 `.github/workflows/docker-build.yml` 文件。
 当推送到 GitHub 仓库的 `main` 分支时，会自动触发构建。
-
-需要在你的 GitHub 仓库的 **Settings -> Secrets and variables -> Actions** 中添加以下 Secrets：
-* `DOCKERHUB_USERNAME`: 你的 Docker Hub 用户名
-* `DOCKERHUB_TOKEN`: 你的 Docker Hub 访问令牌 (Access Token)
+镜像会自动发布到 GitHub 自己的容器镜像仓库 `ghcr.io` 中，由于仓库是 public 的，所以拉取也是无需配置任何权限的。
