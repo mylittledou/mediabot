@@ -12,8 +12,9 @@ logger = logging.getLogger(__name__)
 
 # 配置代理 (如果环境变量提供了代理)
 if TG_PROXY:
-    logger.info(f"使用代理服务器: {TG_PROXY}")
-    apihelper.proxy = {'https': TG_PROXY, 'http': TG_PROXY}
+    logger.info(f"使用代理服务器: {TG_PROXY} (已通过环境变量全局注入)")
+    # 注意: 不要在这里设置 apihelper.proxy，否则会覆盖 requests 的全局环境变量逻辑
+    # apihelper.proxy = {'https': TG_PROXY, 'http': TG_PROXY}
 
 # 检查配置
 try:
