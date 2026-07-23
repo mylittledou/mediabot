@@ -32,3 +32,13 @@ def check_config():
 # 代理设置 (国内访问 Telegram 需要)
 # 格式例如: http://192.168.1.x:7890 或 socks5://192.168.1.x:7890
 TG_PROXY = os.getenv("TG_PROXY", "").strip() or None
+
+if TG_PROXY:
+    # 强制将代理注入到全局环境变量，解决部分底层 requests 版本不识别 apihelper.proxy 的问题
+    os.environ['HTTP_PROXY'] = TG_PROXY
+    os.environ['HTTPS_PROXY'] = TG_PROXY
+    os.environ['http_proxy'] = TG_PROXY
+    os.environ['https_proxy'] = TG_PROXY
+    # 强制本地局域网 IP 直连，防止连接主程序也被代理拦截导致失败
+    os.environ['NO_PROXY'] = 'localhost,127.0.0.0/8,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,169.254.0.0/16'
+    os.environ['no_proxy'] = os.environ['NO_PROXY']
