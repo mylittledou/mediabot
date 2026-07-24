@@ -1,0 +1,8 @@
+{
+    "TG_BOT_TOKEN": "",
+    "TG_ALLOWED_USERS": "",
+    "MEDIASEEK_URL": "http://mediaseek:8000",
+    "MEDIASEEK_USERNAME": "admin",
+    "MEDIASEEK_PASSWORD": "admin",
+    "TG_PROXY": ""
+}

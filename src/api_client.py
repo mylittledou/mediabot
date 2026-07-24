@@ -56,16 +56,7 @@ class MediaSeekClient:
         except:
             return ["/"]
 
-    def extract_video(self, url):
-        if not self.ensure_auth():
-            return None, "无法连接到下载服务器或未授权"
-        try:
-            res = self.session.post(f"{self.base_url}/api/extract", json={"url": url}, timeout=45)
-            if res.status_code == 200:
-                return res.json(), None
-            return None, f"解析失败: {res.status_code} - {res.text}"
-        except Exception as e:
-            return None, f"请求异常: {e}"
+
 
     def get_tasks(self):
         if not self.ensure_auth():

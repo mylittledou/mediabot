@@ -4,6 +4,7 @@ import logging
 import time
 import json
 import os
+from datetime import datetime
 from config import config_mgr, DATA_DIR
 from api_client import api
 
@@ -133,59 +134,35 @@ def init_bot():
     def handle_url_input(message):
         url = message.text.strip()
         chat_id = message.chat.id
-        bot.delete_message(chat_id, message.message_id) # Delete user's URL message to keep chat clean
+        bot.delete_message(chat_id, message.message_id) 
         
         state = user_states[chat_id]
         if not url.startswith(('http://', 'https://')):
             bot.edit_message_text("⚠️ 链接无效，请输入 http:// 或 https:// 开头的链接。请重新发送：", chat_id=chat_id, message_id=state['msg_id'])
             return
             
-        bot.edit_message_text("⏳ 正在解析网页，请稍候...", chat_id=chat_id, message_id=state['msg_id'])
+        title = f"video_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         
-        result, err = api.extract_video(url)
-        if err or not result:
-            markup = types.InlineKeyboardMarkup()
-            markup.add(types.InlineKeyboardButton("返回主菜单", callback_data="main_menu"))
-            bot.edit_message_text(f"❌ 解析失败:\n{err or '未知错误'}", chat_id=chat_id, message_id=state['msg_id'], reply_markup=markup)
-            user_states[chat_id]['state'] = 'idle'
-            return
-            
-        if result.get("status") == "error" or not result.get("m3u8_urls"):
-            markup = types.InlineKeyboardMarkup()
-            markup.add(types.InlineKeyboardButton("返回主菜单", callback_data="main_menu"))
-            bot.edit_message_text(f"⚠️ 解析警告:\n{result.get('message', '未找到视频流')}", chat_id=chat_id, message_id=state['msg_id'], reply_markup=markup)
-            user_states[chat_id]['state'] = 'idle'
-            return
-            
-        # Parse success
-        title = result.get("title", "未命名视频")
-        target_m3u8 = result["m3u8_urls"][0] # Just use the first one for simplicity
-        
-        state['url'] = target_m3u8
+        state['url'] = url
         state['title'] = title
         state['filename'] = f"{title}.mp4"
-        state['state'] = 'confirm_name'
+        state['state'] = 'waiting_rename'
         
         markup = types.InlineKeyboardMarkup(row_width=1)
         markup.add(
-            types.InlineKeyboardButton(f"✅ 使用名称: {title}", callback_data="confirm_name_default"),
-            types.InlineKeyboardButton("✏️ 重命名", callback_data="rename_video"),
+            types.InlineKeyboardButton("✅ 确认使用此名称", callback_data="confirm_name_default"),
             types.InlineKeyboardButton("❌ 取消", callback_data="main_menu")
         )
-        bot.edit_message_text(f"🎉 解析成功！\n\n**原始标题:** {title}\n**流地址:** `{target_m3u8}`\n\n请确认视频名称：", chat_id=chat_id, message_id=state['msg_id'], reply_markup=markup, parse_mode="Markdown")
+        
+        text = f"🔗 **识别到链接！**\n\n当前默认名称：\n`{title}`\n*(点击上一行文字即可自动复制)*\n\n👉 **如需修改**，请直接打字回复新名称。\n👉 **若不修改**，请直接点击下方【确认】按钮。"
+        bot.edit_message_text(text, chat_id=chat_id, message_id=state['msg_id'], reply_markup=markup, parse_mode="Markdown")
 
-    @bot.callback_query_handler(func=lambda call: call.data in ["confirm_name_default", "rename_video"])
+    @bot.callback_query_handler(func=lambda call: call.data == "confirm_name_default")
     @auth_required
     def cb_name_choice(call):
         bot.answer_callback_query(call.id)
         chat_id = call.message.chat.id
-        state = user_states.get(chat_id, {})
-        
-        if call.data == "rename_video":
-            bot.edit_message_text("✏️ 请输入新的视频名称：", chat_id=chat_id, message_id=call.message.message_id)
-            state['state'] = 'waiting_rename'
-        else:
-            proceed_to_folder_selection(chat_id, call.message.message_id)
+        proceed_to_folder_confirmation(chat_id, call.message.message_id)
 
     @bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'waiting_rename')
     @auth_required
@@ -197,38 +174,43 @@ def init_bot():
         state = user_states[chat_id]
         state['title'] = new_title
         state['filename'] = f"{new_title}.mp4"
-        proceed_to_folder_selection(chat_id, state['msg_id'])
+        proceed_to_folder_confirmation(chat_id, state['msg_id'])
 
-    def proceed_to_folder_selection(chat_id, msg_id):
+    def proceed_to_folder_confirmation(chat_id, msg_id):
         state = user_states[chat_id]
-        state['state'] = 'select_folder'
+        state['state'] = 'confirm_folder'
         
-        # Get folders
-        folders = api.get_folders()
-        pref_folder = user_prefs.get(str(chat_id), "/")
+        pref_folder = user_prefs.get(str(chat_id), "/downloads")
         
-        if pref_folder not in folders:
-            folders.append(pref_folder)
-            
         markup = types.InlineKeyboardMarkup(row_width=1)
+        markup.add(
+            types.InlineKeyboardButton(f"✅ 确认下载", callback_data=f"start_dl|{pref_folder}"),
+            types.InlineKeyboardButton("✏️ 修改路径", callback_data="show_folders"),
+            types.InlineKeyboardButton("❌ 取消", callback_data="main_menu")
+        )
         
-        # Add default option
-        markup.add(types.InlineKeyboardButton(f"✅ 默认 ({pref_folder})", callback_data=f"select_dir|{pref_folder}"))
-        
-        for f in set(folders):
-            if f != pref_folder:
-                # Callback data limit is 64 bytes. We might need to hash or map long paths, but keeping it simple for now.
-                safe_f = f[:50]
-                markup.add(types.InlineKeyboardButton(f"📁 {f}", callback_data=f"select_dir|{safe_f}"))
-                
-        markup.add(types.InlineKeyboardButton("❌ 取消", callback_data="main_menu"))
-        
-        text = f"📦 **最后一步：选择下载目录**\n\n即将下载: `{state['title']}`\n请选择要保存在服务器上的哪个文件夹？\n*(本次选择将作为下次的默认选项)*"
+        text = f"📦 **最后一步：确认保存路径**\n\n即将下载: `{state['title']}`\n当前保存路径: `{pref_folder}`"
         bot.edit_message_text(text, chat_id=chat_id, message_id=msg_id, reply_markup=markup, parse_mode="Markdown")
 
-    @bot.callback_query_handler(func=lambda call: call.data.startswith("select_dir|"))
+    @bot.callback_query_handler(func=lambda call: call.data == "show_folders")
     @auth_required
-    def cb_select_dir(call):
+    def cb_show_folders(call):
+        bot.answer_callback_query(call.id)
+        chat_id = call.message.chat.id
+        state = user_states.get(chat_id, {})
+        
+        folders = api.get_folders()
+        markup = types.InlineKeyboardMarkup(row_width=1)
+        for f in set(folders):
+            safe_f = f[:50]
+            markup.add(types.InlineKeyboardButton(f"📁 {f}", callback_data=f"start_dl|{safe_f}"))
+            
+        markup.add(types.InlineKeyboardButton("❌ 取消", callback_data="main_menu"))
+        bot.edit_message_text(f"📂 **请选择要保存的文件夹**\n\n即将下载: `{state.get('title', '')}`", chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup, parse_mode="Markdown")
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("start_dl|"))
+    @auth_required
+    def cb_start_dl(call):
         bot.answer_callback_query(call.id)
         chat_id = call.message.chat.id
         folder = call.data.split("|", 1)[1]
