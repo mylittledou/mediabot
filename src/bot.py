@@ -260,6 +260,11 @@ def init_bot():
             
         user_states[chat_id]['state'] = 'idle'
         
+    @bot.message_handler(func=lambda message: True)
+    @auth_required
+    def fallback_handler(message):
+        bot.send_message(message.chat.id, "🤖 欢迎使用 MediaSeek Bot！\n请点击左下角菜单，或者发送 /start 来唤出主界面。")
+        
     return True
 
 def run_bot():
