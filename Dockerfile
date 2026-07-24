@@ -16,5 +16,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 复制源代码
 COPY src/ ./src/
 
-# 运行 bot
-CMD ["python", "src/bot.py"]
+# 暴露 Web 端口
+EXPOSE 8080
+
+# 运行 Web 和 Bot
+CMD ["python", "src/web.py"]

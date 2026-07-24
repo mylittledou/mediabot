@@ -1,44 +1,86 @@
 import os
+import json
 from dotenv import load_dotenv
 
-# 加载本地 .env 文件（如果存在）
 load_dotenv()
 
-# Telegram Bot Token
-TG_BOT_TOKEN = os.getenv("TG_BOT_TOKEN")
+DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(__file__)), "data"))
+CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
+os.makedirs(DATA_DIR, exist_ok=True)
 
-# 允许访问的 Telegram User IDs（逗号分隔的数字）
-_allowed_users_str = os.getenv("TG_ALLOWED_USERS", "")
-TG_ALLOWED_USERS = []
-if _allowed_users_str:
-    try:
-        TG_ALLOWED_USERS = [int(uid.strip()) for uid in _allowed_users_str.split(",") if uid.strip()]
-    except ValueError:
-        print("警告: TG_ALLOWED_USERS 格式错误，应为逗号分隔的数字。")
+class ConfigManager:
+    def __init__(self):
+        self.config = {}
+        self.load()
 
-# mediado 主程序的 API 地址，默认 http://127.0.0.1:5000
-MEDIADO_URL = os.getenv("MEDIADO_URL", "http://127.0.0.1:5000").rstrip("/")
+    def load(self):
+        if os.path.exists(CONFIG_FILE):
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                self.config = json.load(f)
+        else:
+            # Fallback to env vars
+            self.config = {
+                "TG_BOT_TOKEN": os.getenv("TG_BOT_TOKEN", ""),
+                "TG_ALLOWED_USERS": os.getenv("TG_ALLOWED_USERS", ""),
+                "MEDIASEEK_URL": os.getenv("MEDIASEEK_URL", os.getenv("MEDIADO_URL", "http://mediaseek:8000")).rstrip("/"),
+                "MEDIASEEK_USERNAME": os.getenv("MEDIASEEK_USERNAME", os.getenv("MEDIADO_USERNAME", "admin")),
+                "MEDIASEEK_PASSWORD": os.getenv("MEDIASEEK_PASSWORD", os.getenv("MEDIADO_PASSWORD", "admin")),
+                "TG_PROXY": os.getenv("TG_PROXY", "").strip()
+            }
+            self.save()
 
-# mediado 主程序的网页登录账号和密码
-MEDIADO_USERNAME = os.getenv("MEDIADO_USERNAME", "admin")
-MEDIADO_PASSWORD = os.getenv("MEDIADO_PASSWORD", "password")
+    def save(self):
+        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(self.config, f, indent=4)
 
-def check_config():
-    if not TG_BOT_TOKEN:
-        raise ValueError("请设置 TG_BOT_TOKEN 环境变量")
-    if not TG_ALLOWED_USERS:
-        print("警告: TG_ALLOWED_USERS 未设置或为空，任何用户都可以使用此机器人！建议设置您的 User ID。")
+    def get(self, key, default=None):
+        return self.config.get(key, default)
 
-# 代理设置 (国内访问 Telegram 需要)
-# 格式例如: http://192.168.1.x:7890 或 socks5://192.168.1.x:7890
-TG_PROXY = os.getenv("TG_PROXY", "").strip() or None
+    def set(self, key, value):
+        self.config[key] = value
+        self.save()
 
-if TG_PROXY:
-    # 强制将代理注入到全局环境变量，解决部分底层 requests 版本不识别 apihelper.proxy 的问题
-    os.environ['HTTP_PROXY'] = TG_PROXY
-    os.environ['HTTPS_PROXY'] = TG_PROXY
-    os.environ['http_proxy'] = TG_PROXY
-    os.environ['https_proxy'] = TG_PROXY
-    # 强制本地局域网 IP 直连，防止连接主程序也被代理拦截导致失败
-    os.environ['NO_PROXY'] = 'localhost,127.0.0.0/8,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,169.254.0.0/16'
-    os.environ['no_proxy'] = os.environ['NO_PROXY']
+    @property
+    def tg_bot_token(self):
+        return self.get("TG_BOT_TOKEN", "")
+
+    @property
+    def tg_allowed_users(self):
+        users_str = self.get("TG_ALLOWED_USERS", "")
+        if not users_str: return []
+        try:
+            return [int(uid.strip()) for uid in str(users_str).split(",") if uid.strip()]
+        except ValueError:
+            return []
+
+    @property
+    def mediaseek_url(self):
+        return self.get("MEDIASEEK_URL", "http://mediaseek:8000").rstrip("/")
+
+    @property
+    def mediaseek_username(self):
+        return self.get("MEDIASEEK_USERNAME", "admin")
+
+    @property
+    def mediaseek_password(self):
+        return self.get("MEDIASEEK_PASSWORD", "admin")
+
+    @property
+    def tg_proxy(self):
+        return str(self.get("TG_PROXY", "")).strip() or None
+
+    def apply_proxy_env(self):
+        proxy = self.tg_proxy
+        if proxy:
+            os.environ['HTTP_PROXY'] = proxy
+            os.environ['HTTPS_PROXY'] = proxy
+            os.environ['http_proxy'] = proxy
+            os.environ['https_proxy'] = proxy
+            os.environ['NO_PROXY'] = 'localhost,127.0.0.0/8,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,169.254.0.0/16,mediaseek'
+            os.environ['no_proxy'] = os.environ['NO_PROXY']
+        else:
+            for k in ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'NO_PROXY', 'no_proxy']:
+                if k in os.environ:
+                    del os.environ[k]
+
+config_mgr = ConfigManager()

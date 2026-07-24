@@ -1,141 +1,110 @@
 import requests
 import logging
-import config
+from config import config_mgr
 
 logger = logging.getLogger(__name__)
 
-class MediadoClient:
+class MediaSeekClient:
     def __init__(self):
         self.session = requests.Session()
-        self.base_url = config.MEDIADO_URL
-        self.username = config.MEDIADO_USERNAME
-        self.password = config.MEDIADO_PASSWORD
-        self.logged_in = False
+        self.token = None
+
+    @property
+    def base_url(self):
+        return config_mgr.mediaseek_url
 
     def login(self):
-        """登录主程序以获取 Session 验证"""
-        login_url = f"{self.base_url}/login"
+        """登录 mediaseek 获取 token"""
+        login_url = f"{self.base_url}/api/login"
         payload = {
-            "username": self.username,
-            "password": self.password
+            "username": config_mgr.mediaseek_username,
+            "password": config_mgr.mediaseek_password
         }
         try:
-            response = self.session.post(login_url, data=payload, timeout=5)
-            # Flask 的登录如果不成功通常会重新渲染登录页（包含"用户名或密码错误"）
-            # 或者没有设置 session cookie
-            if "用户名或密码错误" in response.text:
-                logger.error("登录 Mediado 失败：用户名或密码错误。")
-                self.logged_in = False
+            res = self.session.post(login_url, json=payload, timeout=5)
+            if res.status_code == 200:
+                data = res.json()
+                self.token = data.get("token")
+                self.session.headers.update({"Authorization": f"Bearer {self.token}"})
+                return True
+            else:
+                logger.error(f"登录 MediaSeek 失败: {res.text}")
                 return False
-            
-            # 如果成功，通常会重定向或返回有效 session
-            self.logged_in = True
-            return True
-        except requests.exceptions.RequestException as e:
-            logger.error(f"连接 Mediado 失败: {e}")
-            self.logged_in = False
+        except Exception as e:
+            logger.error(f"连接 MediaSeek 失败: {e}")
             return False
 
     def ensure_auth(self):
-        """确保在发送请求前处于登录状态，如果未登录则尝试登录"""
-        # 可以通过请求 /tasks 来测试当前 session 是否有效
-        if self.logged_in:
-            try:
-                res = self.session.get(f"{self.base_url}/tasks", timeout=3, allow_redirects=False)
-                if res.status_code == 302 and "/login" in res.headers.get("Location", ""):
-                    # Session 失效，需要重新登录
-                    self.logged_in = False
-            except:
-                pass
-        
-        if not self.logged_in:
+        if not self.token:
             return self.login()
-        return True
+        try:
+            res = self.session.get(f"{self.base_url}/api/auth-check", timeout=3)
+            if res.status_code != 200 or not res.json().get("authenticated"):
+                return self.login()
+            return True
+        except:
+            return self.login()
+
+    def get_folders(self):
+        if not self.ensure_auth():
+            return []
+        try:
+            res = self.session.get(f"{self.base_url}/api/folders", timeout=5)
+            if res.status_code == 200:
+                return res.json()
+            return ["/"]
+        except:
+            return ["/"]
+
+    def extract_video(self, url):
+        if not self.ensure_auth():
+            return None, "无法连接到下载服务器或未授权"
+        try:
+            res = self.session.post(f"{self.base_url}/api/extract", json={"url": url}, timeout=45)
+            if res.status_code == 200:
+                return res.json(), None
+            return None, f"解析失败: {res.status_code} - {res.text}"
+        except Exception as e:
+            return None, f"请求异常: {e}"
 
     def get_tasks(self):
-        """获取所有任务列表"""
         if not self.ensure_auth():
-            return None, "无法连接到下载服务器或登录失败"
-        
+            return None, "未授权"
         try:
-            res = self.session.get(f"{self.base_url}/tasks", timeout=5)
+            res = self.session.get(f"{self.base_url}/api/tasks", timeout=5)
             if res.status_code == 200:
                 return res.json(), None
-            else:
-                return None, f"请求失败，状态码: {res.status_code}"
+            return None, f"请求失败: {res.status_code}"
         except Exception as e:
-            return None, f"连接异常: {str(e)}"
-
-    def get_status(self, task_id):
-        """获取单个任务状态"""
+            return None, str(e)
+            
+    def get_history(self):
         if not self.ensure_auth():
-            return None, "无法连接到下载服务器或登录失败"
-        
+            return None, "未授权"
         try:
-            res = self.session.get(f"{self.base_url}/status/{task_id}", timeout=5)
+            res = self.session.get(f"{self.base_url}/api/history", timeout=5)
             if res.status_code == 200:
                 return res.json(), None
-            elif res.status_code == 404:
-                return None, "任务不存在"
-            else:
-                return None, f"请求失败，状态码: {res.status_code}"
+            return None, f"请求失败: {res.status_code}"
         except Exception as e:
-            return None, f"连接异常: {str(e)}"
+            return None, str(e)
 
-    def start_download(self, url, output_file=None):
-        """提交下载任务"""
+    def start_download(self, url, title=None, filename=None, save_path=None):
         if not self.ensure_auth():
-            return None, "无法连接到下载服务器或登录失败"
-            
-        if not output_file:
-            output_file = "download_from_tg"
-            
+            return None, "未授权"
+        
         payload = {
             "url": url,
-            "output_file": output_file,
-            "save_path": "",  # 使用默认路径
-            "test_download": "false"
+            "title": title or "Telegram Task",
+            "filename": filename,
+            "save_path": save_path
         }
-        
         try:
-            res = self.session.post(f"{self.base_url}/download", data=payload, timeout=5)
+            res = self.session.post(f"{self.base_url}/api/tasks", json=payload, timeout=5)
             if res.status_code == 200:
-                data = res.json()
-                if "error" in data:
-                    return None, data["error"]
-                return data.get("task_id"), None
-            else:
-                return None, f"请求失败，状态码: {res.status_code}"
+                return res.json().get("id"), None
+            return None, f"提交失败: {res.status_code} - {res.text}"
         except Exception as e:
-            return None, f"连接异常: {str(e)}"
+            return None, str(e)
 
-    def pause_task(self, task_id):
-        if not self.ensure_auth(): return False, "未登录"
-        try:
-            res = self.session.post(f"{self.base_url}/pause/{task_id}", timeout=5)
-            return res.status_code == 200, res.text
-        except Exception as e: return False, str(e)
-        
-    def resume_task(self, task_id):
-        if not self.ensure_auth(): return False, "未登录"
-        try:
-            res = self.session.post(f"{self.base_url}/resume/{task_id}", timeout=5)
-            return res.status_code == 200, res.text
-        except Exception as e: return False, str(e)
-        
-    def stop_task(self, task_id):
-        if not self.ensure_auth(): return False, "未登录"
-        try:
-            res = self.session.post(f"{self.base_url}/stop/{task_id}", timeout=5)
-            return res.status_code == 200, res.text
-        except Exception as e: return False, str(e)
-        
-    def delete_task(self, task_id):
-        if not self.ensure_auth(): return False, "未登录"
-        try:
-            res = self.session.post(f"{self.base_url}/delete/{task_id}", timeout=5)
-            return res.status_code == 200, res.text
-        except Exception as e: return False, str(e)
-
-# 全局单例
-api = MediadoClient()
+api = MediaSeekClient()
