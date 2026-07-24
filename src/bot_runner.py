@@ -13,6 +13,8 @@ def bot_worker():
     while running:
         try:
             run_bot()
+            if running:
+                time.sleep(5)
         except Exception as e:
             if not running:
                 break
