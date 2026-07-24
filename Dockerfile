@@ -20,5 +20,5 @@ COPY src/ ./src/
 # 暴露 Web 端口
 EXPOSE 8080
 
-# 运行 Web 和 Bot
-CMD ["python", "src/web.py"]
+# 运行 Web 和 Bot，并将所有原始输出重定向到 data 目录，以便在容器完全静默时排查
+CMD sh -c "python src/web.py > /app/data/docker_raw.log 2>&1"

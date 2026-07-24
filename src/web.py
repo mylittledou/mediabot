@@ -1,10 +1,40 @@
 import os
-import threading
-import time
-import requests
-from fastapi import FastAPI, Request, Form, Depends, HTTPException, status
-from fastapi.responses import HTMLResponse, RedirectResponse
-from pydantic import BaseModel
+import sys
+import logging
+import traceback
+
+DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(__file__)), "data"))
+os.makedirs(DATA_DIR, exist_ok=True)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler(os.path.join(DATA_DIR, "web_startup.log"), encoding='utf-8'),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger("web")
+logger.info("==========================================")
+logger.info("Web App 开始启动...")
+
+def handle_exception(exc_type, exc_value, exc_traceback):
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+    logger.error("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
+
+sys.excepthook = handle_exception
+
+try:
+    import threading
+    import time
+    import requests
+    from fastapi import FastAPI, Request, Form, Depends, HTTPException, status
+    from fastapi.responses import HTMLResponse, RedirectResponse
+    from pydantic import BaseModel
+except Exception as e:
+    logger.error(f"导入依赖失败: {e}")
+    raise
 
 from config import config_mgr, DATA_DIR
 import bot_runner
