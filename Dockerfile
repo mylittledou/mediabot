@@ -6,6 +6,7 @@ WORKDIR /app
 # 设置环境变量，防止 Python 缓冲 stdout 和 stderr
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONPATH=/app/src
 
 # 复制 requirements 文件
 COPY requirements.txt .
