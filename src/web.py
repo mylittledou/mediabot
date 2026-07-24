@@ -96,18 +96,20 @@ HTML_TEMPLATE = """
             
             <div class="form-group">
                 <label>MediaSeek API 地址</label>
-                <input type="text" name="MEDIASEEK_URL" value="{{ config.MEDIASEEK_URL }}">
+                <input type="text" name="MEDIASEEK_URL" id="ms_url" value="{{ config.MEDIASEEK_URL }}">
                 <span class="hint">例如: http://mediaseek:8000 (如果在同一个 docker-compose 内)</span>
             </div>
             
             <div class="form-group">
                 <label>MediaSeek 用户名</label>
-                <input type="text" name="MEDIASEEK_USERNAME" value="{{ config.MEDIASEEK_USERNAME }}">
+                <input type="text" name="MEDIASEEK_USERNAME" id="ms_user" value="{{ config.MEDIASEEK_USERNAME }}">
             </div>
             
             <div class="form-group">
                 <label>MediaSeek 密码</label>
-                <input type="password" name="MEDIASEEK_PASSWORD" value="{{ config.MEDIASEEK_PASSWORD }}">
+                <input type="password" name="MEDIASEEK_PASSWORD" id="ms_pass" value="{{ config.MEDIASEEK_PASSWORD }}">
+                <button type="button" class="btn-test" style="background: #9b59b6;" onclick="testBackend()">测试后端连通性</button>
+                <div id="backend-result" style="margin-top: 10px; font-size: 14px; font-weight: bold;"></div>
             </div>
             
             <button type="submit">保存并重启 Bot</button>
@@ -135,6 +137,31 @@ HTML_TEMPLATE = """
             })
             .catch(err => {
                 resDiv.innerHTML = '<span style="color: #c0392b;">❌ 请求出错: ' + err + '</span>';
+            });
+        }
+
+        function testBackend() {
+            const url = document.getElementById('ms_url').value;
+            const user = document.getElementById('ms_user').value;
+            const pass = document.getElementById('ms_pass').value;
+            const resDiv = document.getElementById('backend-result');
+            resDiv.innerHTML = '<span style="color: #f39c12;">🔄 正在连接后端...</span>';
+            
+            fetch('/test-backend', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'url=' + encodeURIComponent(url) + '&user=' + encodeURIComponent(user) + '&pass=' + encodeURIComponent(pass)
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    resDiv.innerHTML = '<span style="color: #27ae60;">🟢 已连通 (登录成功)</span>';
+                } else {
+                    resDiv.innerHTML = '<span style="color: #c0392b;">🔴 已断开 (' + data.error + ')</span>';
+                }
+            })
+            .catch(err => {
+                resDiv.innerHTML = '<span style="color: #c0392b;">🔴 请求出错: ' + err + '</span>';
             });
         }
     </script>
@@ -189,6 +216,28 @@ async def test_proxy(proxy: str = Form("")):
         res = requests.get("https://api.telegram.org", proxies=proxies, timeout=5)
         elapsed = round(time.time() - start, 2)
         return {"success": True, "status": res.status_code, "time": elapsed}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/test-backend")
+async def test_backend(url: str = Form(""), user: str = Form(""), pass_: str = Form(alias="pass", default="")):
+    url = url.strip().rstrip("/")
+    if not url:
+        return {"success": False, "error": "地址不能为空"}
+    try:
+        # Avoid passing through the proxy to access localhost/internal network
+        proxies = {"http": None, "https": None}
+        res = requests.post(
+            f"{url}/api/login",
+            json={"username": user, "password": pass_},
+            proxies=proxies,
+            timeout=5
+        )
+        if res.status_code == 200:
+            return {"success": True}
+        else:
+            err = res.json().get("detail", "未知错误")
+            return {"success": False, "error": err}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
